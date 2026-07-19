@@ -39,10 +39,10 @@ class BluetoothClient:
     notify_future: asyncio.Future
     notify_response: bytearray
 
-    def __init__(self, address: str):
+    def __init__(self, address: str, name: str = None):
         self.address = address
         self.state = ClientState.NOT_CONNECTED
-        self.name = None
+        self.name = name
         self.client = BleakClient(self.address)
         self.command_queue = asyncio.Queue()
         self.notify_future = None

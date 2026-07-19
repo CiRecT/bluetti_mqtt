@@ -9,6 +9,7 @@
 * Add an AC300 hardware validation guide and guarded MQTT test scripts
 * Include setuptools and wheel for reproducible non-isolated development builds
 * Create the CLI event loop explicitly for Python 3.14 compatibility
+* Reuse BLE advertised device names when the standard GATT name characteristic is unavailable
 * Require Python 3.10 or newer and update the supported dependency stack
 * Replace the renamed `asyncio-mqtt` package with `aiomqtt`
 

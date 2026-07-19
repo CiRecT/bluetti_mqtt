@@ -34,7 +34,7 @@ python3 -m venv .venv
 .venv/bin/python -m build --no-isolation
 ```
 
-The current baseline is 124 passing tests. Do not continue to the hardware test
+The current baseline is 125 passing tests. Do not continue to the hardware test
 if the printed Python path is not
 `/home/bluetti/bluetti_mqtt/.venv/bin/python`, or if pytest, Flake8, dependency
 checking, or the package build fails. `--no-isolation` is supported because

@@ -180,3 +180,20 @@ avoid creating duplicate Home Assistant entities.
 - Do not publish packages or create release tags as part of routine validation.
   In the upstream repository, the GitHub Actions workflow publishes builds to
   Test PyPI and publishes tagged pushes to PyPI.
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specifications are tracked as GitHub Issues. See
+`docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The repository uses the canonical engineering-skill labels. See
+`docs/agents/triage-labels.md`.
+
+### Domain docs
+
+The repository uses a single-context domain layout. See
+`docs/agents/domain.md`.

@@ -59,7 +59,7 @@ class CommandLineHandler:
             help='The device MAC(s) to connect to')
 
         # The default event loop on windows doesn't support add_reader, which
-        # is required by asyncio-mqtt
+        # is required by aiomqtt
         if sys.platform == 'win32':
             asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 

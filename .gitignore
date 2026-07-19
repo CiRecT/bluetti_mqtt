@@ -1,5 +1,9 @@
 # Compiled python modules.
 *.pyc
+__pycache__/
+
+# Local virtual environments.
+.venv/
 
 # Setuptools distribution folder.
 /dist/

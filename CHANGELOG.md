@@ -2,6 +2,9 @@
 
 ## FUTURE
 
+* Require Python 3.10 or newer and update the supported dependency stack
+* Replace the renamed `asyncio-mqtt` package with `aiomqtt`
+
 ## 0.15.0
 
 * Add additional battery pack details for AC200M, AC300, EP500(P), and AC500

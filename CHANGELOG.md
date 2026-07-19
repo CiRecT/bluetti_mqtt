@@ -7,6 +7,7 @@
 * Add strict versioned YAML runtime configuration while preserving CLI-only startup
 * Add deterministic pytest coverage with fake MQTT, BLE, environment, and clock boundaries
 * Add an AC300 hardware validation guide and guarded MQTT test scripts
+* Include setuptools and wheel for reproducible non-isolated development builds
 * Require Python 3.10 or newer and update the supported dependency stack
 * Replace the renamed `asyncio-mqtt` package with `aiomqtt`
 

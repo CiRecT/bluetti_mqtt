@@ -23,19 +23,23 @@ cd /home/bluetti/bluetti_mqtt
 git rev-parse --short HEAD
 
 python3 -m venv .venv
-. .venv/bin/activate
-python3 -m pip install --upgrade pip
-python3 -m pip install -r requirements-dev.txt
-python3 -m pip install -e .
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install -r requirements-dev.txt
+.venv/bin/python -m pip install -e .
 
-python3 -m pytest -q
-python3 -m flake8 bluetti_mqtt tests
-python3 -m pip check
-python3 -m build --no-isolation
+.venv/bin/python -c "import sys, setuptools, wheel; print(sys.executable); print('build backend OK')"
+.venv/bin/python -m pytest -q
+.venv/bin/python -m flake8 bluetti_mqtt tests
+.venv/bin/python -m pip check
+.venv/bin/python -m build --no-isolation
 ```
 
 The baseline for `c0fd53a` is 123 passing tests. Do not continue to the hardware
-test if pytest, Flake8, dependency checking, or the package build fails.
+test if the printed Python path is not
+`/home/bluetti/bluetti_mqtt/.venv/bin/python`, or if pytest, Flake8, dependency
+checking, or the package build fails. `--no-isolation` is supported because
+`requirements-dev.txt` installs the `setuptools` backend and `wheel` into this
+exact virtual environment.
 
 ## 2. Identify the target without writing
 

@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 
 from bluetti_mqtt.config import ConfigError, load_yaml_config
@@ -155,3 +157,40 @@ def test_legacy_cli_arguments_remain_unchanged():
     assert args.hostname == 'broker'
     assert args.port == 1884
     assert args.addresses == ['AA:BB']
+
+
+def test_cli_start_creates_an_event_loop_when_none_exists(monkeypatch):
+    class FakeLoop:
+        def __init__(self):
+            self.ran = False
+            self.closed = False
+
+        def add_signal_handler(self, signal, callback):
+            pass
+
+        def set_exception_handler(self, callback):
+            pass
+
+        def create_task(self, coroutine):
+            coroutine.close()
+
+        def run_forever(self):
+            self.ran = True
+
+        def close(self):
+            self.closed = True
+
+    def no_current_loop():
+        raise RuntimeError("There is no current event loop in thread 'MainThread'.")
+
+    loop = FakeLoop()
+    installed_loops = []
+    monkeypatch.setattr(asyncio, 'get_event_loop', no_current_loop)
+    monkeypatch.setattr(asyncio, 'new_event_loop', lambda: loop)
+    monkeypatch.setattr(asyncio, 'set_event_loop', installed_loops.append)
+
+    CommandLineHandler(['bluetti-mqtt']).start(object())
+
+    assert loop.ran is True
+    assert loop.closed is True
+    assert installed_loops == [loop, None]

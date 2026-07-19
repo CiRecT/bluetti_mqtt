@@ -22,10 +22,15 @@ class DeviceCommand:
 
     def is_exception_response(self, response: bytes):
         """Checks the response code to see if it's a MODBUS exception"""
-        if len(response) < 2:
+        if len(response) != 5:
             return False
-        else:
-            return response[1] == self.function_code + 0x80
+
+        crc = modbus_crc(response[:-2]).to_bytes(2, byteorder='little')
+        return (
+            response[0] == self.cmd[0]
+            and response[1] == self.function_code + 0x80
+            and response[-2:] == crc
+        )
 
     def is_valid_response(self, response: bytes):
         """Validates that the reponse is complete and uncorrupted"""
@@ -72,6 +77,10 @@ class WriteSingleRegister(DeviceCommand):
 
     def response_size(self):
         return 8
+
+    def is_valid_response(self, response: bytes):
+        """A write is acknowledged only by an exact echo of the request."""
+        return bytes(response) == bytes(self.cmd)
 
     def parse_response(self, response: bytes):
         return bytes(response[4:6])

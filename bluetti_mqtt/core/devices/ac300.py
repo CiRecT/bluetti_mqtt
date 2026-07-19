@@ -2,6 +2,7 @@ from enum import Enum, unique
 from typing import List
 from ..commands import ReadHoldingRegisters
 from .bluetti_device import BluettiDevice
+from .capabilities import ExecutionPolicy, WriteOnlyField
 from .struct import DeviceStruct
 
 
@@ -105,6 +106,20 @@ class AC300(BluettiDevice):
         self.struct.add_enum_field('auto_sleep_mode', 3061, AutoSleepMode)
 
         super().__init__(address, 'AC300', sn)
+        self.write_only_fields.append(WriteOnlyField(
+            name='grid_charging_current_limit',
+            address=3019,
+            minimum=1,
+            maximum=10,
+            step=1,
+            policy=ExecutionPolicy(
+                timeout=5,
+                max_attempts=1,
+                minimum_update_interval=10,
+                dispatch_timeout=5,
+                requires_same_connection=True,
+            ),
+        ))
 
     @property
     def pack_num_max(self):

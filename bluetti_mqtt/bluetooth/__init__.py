@@ -5,7 +5,7 @@ from bleak import BleakScanner
 from bleak.backends.device import BLEDevice
 from bluetti_mqtt.core import BluettiDevice, AC200M, AC300, AC500, AC60, EP500, EP500P, EP600, EB3A
 from .client import BluetoothClient
-from .exc import BadConnectionError, ModbusError, ParseError
+from .exc import BadConnectionError, ConnectionChangedError, DispatchTimeoutError, ModbusError, ParseError
 from .manager import MultiDeviceManager
 
 
@@ -25,6 +25,8 @@ async def scan_devices():
 
 def build_device(address: str, name: str):
     match = DEVICE_NAME_RE.match(name)
+    if match is None:
+        raise ValueError(f'Unsupported Bluetti device name: {name}')
     if match[1] == 'AC200M':
         return AC200M(address, match[2])
     if match[1] == 'AC300':
@@ -41,6 +43,7 @@ def build_device(address: str, name: str):
         return EP600(address, match[2])
     if match[1] == 'EB3A':
         return EB3A(address, match[2])
+    raise ValueError(f'Unsupported Bluetti device name: {name}')
 
 
 async def check_addresses(addresses: Set[str]):

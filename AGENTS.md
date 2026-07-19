@@ -8,7 +8,7 @@ polls MODBUS-style registers, publishes parsed state, accepts selected write
 commands, and creates Home Assistant MQTT discovery entities.
 
 The repository is a single setuptools package. It currently targets Python
-3.10 or newer and has no automated test suite.
+3.10 or newer and uses pytest for deterministic automated tests.
 
 ## Repository map
 
@@ -16,11 +16,15 @@ The repository is a single setuptools package. It currently targets Python
   CRC validation, and raw response parsing.
 - `bluetti_mqtt/core/devices/struct.py`: register field definitions and parsing.
 - `bluetti_mqtt/core/devices/`: device-specific register maps, polling ranges,
-  enums, and writable ranges.
+  enums, writable ranges, and separate write-only capabilities.
 - `bluetti_mqtt/bluetooth/`: BLE scanning, connection state, request queuing,
   retries, and response assembly.
 - `bluetti_mqtt/bus.py`: asynchronous in-process message bus between polling and
   MQTT layers.
+- `bluetti_mqtt/command.py`: public command authorization, normalized results,
+  execution, rate limiting, and stable failure mapping.
+- `bluetti_mqtt/config.py`: strict versioned YAML configuration and credential
+  resolution.
 - `bluetti_mqtt/device_handler.py`: device discovery, polling loops, and command
   dispatch.
 - `bluetti_mqtt/mqtt_client.py`: MQTT topics, Home Assistant discovery payloads,
@@ -32,6 +36,8 @@ The repository is a single setuptools package. It currently targets Python
   configuration.
 - `.github/workflows/release.yml`: style check, distribution build, and upstream
   Test PyPI/PyPI publishing workflow.
+- `tests/`: deterministic protocol, configuration, command, MQTT, and fake
+  boundary tests.
 
 The main runtime flow is:
 
@@ -52,12 +58,12 @@ source .venv/bin/activate
 python3 -m pip install --upgrade pip
 python3 -m pip install -r requirements.txt
 python3 -m pip install -e .
-python3 -m pip install flake8 build
+python3 -m pip install -r requirements-dev.txt
 ```
 
 `requirements.txt` pins the known runtime dependency set, while package runtime
-dependencies are also declared in `setup.cfg`. Flake8 and `build` are CI/developer
-tools and are not currently declared as project dependencies.
+dependencies are also declared in `setup.cfg`. Test and build tools are kept in
+`requirements-dev.txt`.
 
 BLE access is platform-specific. Linux development may require a running D-Bus,
 BlueZ, Bluetooth permissions, and a nearby supported device. MQTT integration
@@ -92,11 +98,13 @@ through 12500, can take hours, and communicates continuously with real hardware.
 
 ## Validation and testing
 
-There is no committed `tests/` directory or configured test framework. For every
-change, run the checks that exist in CI:
+Run the deterministic test suite and the checks that exist in CI for every
+change:
 
 ```bash
-python3 -m flake8 bluetti_mqtt
+python3 -m pytest
+python3 -m flake8 bluetti_mqtt tests
+python3 -m pip check
 python3 -m build
 ```
 

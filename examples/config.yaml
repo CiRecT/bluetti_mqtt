@@ -1,0 +1,14 @@
+version: 1
+mqtt:
+  host: broker.example
+  port: 1883
+  username: bluetti
+  password_env: BLUETTI_MQTT_PASSWORD
+polling_interval: 10
+home_assistant: normal
+devices:
+  - model: AC300
+    address: AA:BB:CC:DD:EE:FF
+    grid_charging:
+      enabled: true
+      minimum_update_interval: 10

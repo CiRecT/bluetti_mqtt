@@ -2,16 +2,31 @@ import asyncio
 from bleak import BleakError
 import logging
 import time
-from typing import Dict, List, cast
+from typing import Dict, List, Mapping, Optional, Set, Tuple, cast
 from bluetti_mqtt.bluetooth import BadConnectionError, MultiDeviceManager, ModbusError, ParseError, build_device
-from bluetti_mqtt.bus import CommandMessage, EventBus, ParserMessage
+from bluetti_mqtt.bus import CommandMessage, CommandResultMessage, EventBus, ParserMessage, PublicCommandMessage
+from bluetti_mqtt.command import CommandExecutor
 from bluetti_mqtt.core import BluettiDevice, ReadHoldingRegisters
 
 
 class DeviceHandler:
-    def __init__(self, addresses: List[str], interval: int, bus: EventBus):
+    def __init__(
+        self,
+        addresses: List[str],
+        interval: int,
+        bus: EventBus,
+        expected_models: Optional[Mapping[str, str]] = None,
+        minimum_update_intervals: Optional[Mapping[Tuple[str, str], int]] = None,
+    ):
         self.manager = MultiDeviceManager(addresses)
+        self.command_executor = CommandExecutor(
+            self.manager,
+            minimum_update_intervals=minimum_update_intervals,
+        )
         self.devices: Dict[str, BluettiDevice] = {}
+        self.expected_models = dict(expected_models or {})
+        self.disabled_addresses: Set[str] = set()
+        self.public_command_tasks: Set[asyncio.Task] = set()
         self.interval = interval
         self.bus = bus
 
@@ -23,17 +38,33 @@ class DeviceHandler:
 
         # Connect to event bus
         self.bus.add_command_listener(self.handle_command)
+        self.bus.add_public_command_listener(self.handle_public_command)
 
         # Poll the clients
         logging.info('Starting to poll clients...')
         polling_tasks = [self._poll(a) for a in self.manager.addresses]
         pack_polling_tasks = [self._pack_poll(a) for a in self.manager.addresses]
-        await asyncio.gather(*(polling_tasks + pack_polling_tasks + [manager_task]))
+        try:
+            await asyncio.gather(*(polling_tasks + pack_polling_tasks + [manager_task]))
+        finally:
+            command_tasks = list(self.public_command_tasks)
+            for task in command_tasks:
+                task.cancel()
+            await asyncio.gather(*command_tasks, return_exceptions=True)
 
     async def handle_command(self, msg: CommandMessage):
         if self.manager.is_ready(msg.device.address):
             logging.debug(f'Performing command {msg.device}: {msg.command}')
             await self.manager.perform_nowait(msg.device.address, msg.command)
+
+    async def handle_public_command(self, msg: PublicCommandMessage):
+        task = asyncio.create_task(self._execute_public_command(msg))
+        self.public_command_tasks.add(task)
+        task.add_done_callback(self.public_command_tasks.discard)
+
+    async def _execute_public_command(self, msg: PublicCommandMessage):
+        result = await self.command_executor.execute(msg.request)
+        await self.bus.put(CommandResultMessage(result))
 
     async def _poll(self, address: str):
         while True:
@@ -43,6 +74,8 @@ class DeviceHandler:
                 continue
 
             device = self._get_device(address)
+            if device is None:
+                return
 
             # Send all polling commands
             start_time = time.monotonic()
@@ -63,6 +96,8 @@ class DeviceHandler:
 
             # Break if there's nothing to poll
             device = self._get_device(address)
+            if device is None:
+                return
             if len(device.pack_logging_commands) == 0:
                 break
 
@@ -98,7 +133,22 @@ class DeviceHandler:
             logging.debug(f'Needed to disconnect due to error: {err}')
 
     def _get_device(self, address: str):
+        if address in self.disabled_addresses:
+            return None
         if address not in self.devices:
             name = self.manager.get_name(address)
-            self.devices[address] = build_device(address, name)
+            try:
+                device = build_device(address, name)
+            except ValueError:
+                logging.exception(f'Disabling {address}: unsupported discovered device name {name!r}')
+                self.disabled_addresses.add(address)
+                return None
+            expected_model = self.expected_models.get(address)
+            if expected_model is not None and device.type != expected_model:
+                logging.error(
+                    f'Disabling {address}: configured model {expected_model} does not match discovered {device.type}'
+                )
+                self.disabled_addresses.add(address)
+                return None
+            self.devices[address] = device
         return self.devices[address]

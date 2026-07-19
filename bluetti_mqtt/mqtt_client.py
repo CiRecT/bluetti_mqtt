@@ -3,11 +3,11 @@ from dataclasses import dataclass
 from enum import auto, Enum, unique
 import json
 import logging
-import re
-from typing import List, Optional
+from typing import List, Optional, Set
 from aiomqtt import Client, Message, MqttError
-from bluetti_mqtt.bus import CommandMessage, EventBus, ParserMessage
-from bluetti_mqtt.core import BluettiDevice, DeviceCommand
+from bluetti_mqtt.bus import CommandResultMessage, EventBus, ParserMessage, PublicCommandMessage
+from bluetti_mqtt.command import CommandRequest, CommandResult, parse_public_command
+from bluetti_mqtt.core import BluettiDevice
 
 
 @unique
@@ -25,9 +25,9 @@ class MqttFieldConfig:
     advanced: bool  # Do not export by default to Home Assistant
     home_assistant_extra: dict
     id_override: Optional[str] = None  # Used to override Home Assistant field id
+    allow_retained_commands: bool = True
 
 
-COMMAND_TOPIC_RE = re.compile(r'^bluetti/command/(\w+)-(\d+)/([a-z_]+)$')
 NORMAL_DEVICE_FIELDS = {
     'dc_input_power': MqttFieldConfig(
         type=MqttFieldType.NUMERIC,
@@ -402,6 +402,19 @@ NORMAL_DEVICE_FIELDS = {
         }
     ),
 }
+GRID_CHARGING_CURRENT_FIELD = MqttFieldConfig(
+    type=MqttFieldType.NUMERIC,
+    setter=True,
+    advanced=False,
+    home_assistant_extra={
+        'name': 'Grid Charging Current Limit',
+        'min': 1,
+        'max': 10,
+        'step': 1,
+        'unit_of_measurement': 'A',
+    },
+    allow_retained_commands=False,
+)
 DC_INPUT_FIELDS = {
     'dc_input_voltage1': MqttFieldConfig(
         type=MqttFieldType.NUMERIC,
@@ -496,6 +509,7 @@ class MQTTClient:
         port: int = 1883,
         username: Optional[str] = None,
         password: Optional[str] = None,
+        grid_charging_addresses: Optional[Set[str]] = None,
     ):
         self.bus = bus
         self.hostname = hostname
@@ -503,9 +517,26 @@ class MQTTClient:
         self.username = username
         self.password = password
         self.home_assistant_mode = home_assistant_mode
+        self.grid_charging_addresses = set(grid_charging_addresses or set())
         self.devices = []
+        self._bus_connected = False
+
+    def _field_configs_for_device(self, device: BluettiDevice):
+        fields = dict(NORMAL_DEVICE_FIELDS)
+        if device.type == 'AC300' and device.address in self.grid_charging_addresses:
+            fields['grid_charging_current_limit'] = GRID_CHARGING_CURRENT_FIELD
+        return fields
+
+    def _connect_bus(self):
+        if self._bus_connected:
+            return
+        self.message_queue = asyncio.Queue()
+        self.bus.add_parser_listener(self.handle_message)
+        self.bus.add_command_result_listener(self.handle_message)
+        self._bus_connected = True
 
     async def run(self):
+        self._connect_bus()
         while True:
             logging.info('Connecting to MQTT broker...')
             try:
@@ -516,10 +547,6 @@ class MQTTClient:
                     password=self.password
                 ) as client:
                     logging.info('Connected to MQTT broker')
-
-                    # Connect to event bus
-                    self.message_queue = asyncio.Queue()
-                    self.bus.add_parser_listener(self.handle_message)
 
                     # Handle pub/sub
                     await asyncio.gather(
@@ -534,16 +561,19 @@ class MQTTClient:
         await self.message_queue.put(msg)
 
     async def _handle_commands(self, client: Client):
-        await client.subscribe('bluetti/command/#')
+        await client.subscribe('bluetti/command/#', qos=1)
         async for mqtt_message in client.messages:
             await self._handle_command(mqtt_message)
 
     async def _handle_messages(self, client: Client):
         while True:
-            msg: ParserMessage = await self.message_queue.get()
-            if msg.device not in self.devices:
-                await self._init_device(msg.device, client)
-            await self._handle_message(client, msg)
+            msg = await self.message_queue.get()
+            if isinstance(msg, ParserMessage):
+                if msg.device not in self.devices:
+                    await self._init_device(msg.device, client)
+                await self._handle_message(client, msg)
+            elif isinstance(msg, CommandResultMessage):
+                await self._handle_result(client, msg)
             self.message_queue.task_done()
 
     async def _init_device(self, device: BluettiDevice, client: Client):
@@ -576,7 +606,7 @@ class MQTTClient:
             return json.dumps(payload_dict, separators=(',', ':'))
 
         # Publish normal fields
-        for name, field in NORMAL_DEVICE_FIELDS.items():
+        for name, field in self._field_configs_for_device(device).items():
             # Skip fields not supported by the device
             if not device.has_field(name):
                 continue
@@ -629,42 +659,43 @@ class MQTTClient:
         logging.info(f'Sent discovery message of {device.type}-{device.sn} to Home Assistant')
 
     async def _handle_command(self, mqtt_message: Message):
-        # Parse the mqtt_message.topic
-        m = COMMAND_TOPIC_RE.match(str(mqtt_message.topic))
-        if not m:
+        outcome = parse_public_command(
+            str(mqtt_message.topic),
+            mqtt_message.payload,
+            self.devices,
+            self._field_configs_for_device,
+            retain=getattr(mqtt_message, 'retain', False),
+        )
+        if outcome is None:
             logging.warn(f'unknown command topic: {mqtt_message.topic}')
             return
-
-        # Find the matching device for the command
-        device = next((d for d in self.devices if d.type == m[1] and d.sn == m[2]), None)
-        if not device:
-            logging.warn(f'unknown device: {m[1]} {m[2]}')
-            return
-
-        # Check if the device supports setting this field
-        if not device.has_field_setter(m[3]):
-            logging.warn(f'Received command for unknown topic: {m[3]} - {mqtt_message.topic}')
-            return
-
-        cmd: DeviceCommand = None
-        if m[3] in NORMAL_DEVICE_FIELDS:
-            field = NORMAL_DEVICE_FIELDS[m[3]]
-            if field.type == MqttFieldType.ENUM:
-                value = mqtt_message.payload.decode('ascii')
-                cmd = device.build_setter_command(m[3], value)
-            elif field.type == MqttFieldType.BOOL or field.type == MqttFieldType.BUTTON:
-                value = mqtt_message.payload == b'ON'
-                cmd = device.build_setter_command(m[3], value)
-            elif field.type == MqttFieldType.NUMERIC:
-                value = int(mqtt_message.payload.decode('ascii'))
-                cmd = device.build_setter_command(m[3], value)
-            else:
-                raise AssertionError(f'unexpected enum type: {field.type}')
+        if isinstance(outcome, CommandRequest):
+            await self.bus.put(PublicCommandMessage(outcome))
         else:
-            logging.warn(f'Received command for unhandled topic: {m[3]} - {mqtt_message.topic}')
-            return
+            await self.bus.put(CommandResultMessage(outcome))
 
-        await self.bus.put(CommandMessage(device, cmd))
+    async def _handle_result(self, client: Client, msg: CommandResultMessage):
+        result: CommandResult = msg.result
+        payload = {
+            'status': result.status.value,
+            'cached': result.cached,
+        }
+        if result.value is not None:
+            payload['value'] = result.value
+        if result.error is not None:
+            payload['error'] = result.error.value
+        await client.publish(
+            f'bluetti/result/{result.device_id}/{result.field}',
+            payload=json.dumps(payload, separators=(',', ':')).encode(),
+            qos=1,
+            retain=False,
+        )
+        if result.field == 'grid_charging_current_limit' and result.status.value == 'applied':
+            await client.publish(
+                f'bluetti/state/{result.device_id}/{result.field}',
+                payload=str(result.value).encode(),
+                retain=False,
+            )
 
     async def _handle_message(self, client: Client, msg: ParserMessage):
         logging.debug(f'Got a message from {msg.device}: {msg.parsed}')

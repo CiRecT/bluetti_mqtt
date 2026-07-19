@@ -1,8 +1,9 @@
 import asyncio
 import logging
-from typing import Dict, List
+from typing import Callable, Dict, List
 from bleak import BleakScanner
 from bluetti_mqtt.core import DeviceCommand
+from bluetti_mqtt.core.devices.capabilities import ExecutionPolicy
 from .client import BluetoothClient
 
 
@@ -35,14 +36,26 @@ class MultiDeviceManager:
         else:
             raise Exception('Unknown address')
 
-    async def perform(self, address: str, command: DeviceCommand):
+    async def perform(
+        self,
+        address: str,
+        command: DeviceCommand,
+        policy: ExecutionPolicy = None,
+        on_attempt: Callable[[], None] = None,
+    ):
         if address in self.clients:
-            return await self.clients[address].perform(command)
+            return await self.clients[address].perform(command, policy, on_attempt)
         else:
             raise Exception('Unknown address')
 
-    async def perform_nowait(self, address: str, command: DeviceCommand):
+    async def perform_nowait(
+        self,
+        address: str,
+        command: DeviceCommand,
+        policy: ExecutionPolicy = None,
+        on_attempt: Callable[[], None] = None,
+    ):
         if address in self.clients:
-            await self.clients[address].perform_nowait(command)
+            await self.clients[address].perform_nowait(command, policy, on_attempt)
         else:
             raise Exception('Unknown address')

@@ -1,6 +1,7 @@
 from typing import Any, List
 from ..commands import ReadHoldingRegisters, WriteSingleRegister
 from .struct import BoolField, DeviceStruct, EnumField
+from .capabilities import ExecutionPolicy, WriteOnlyField
 
 
 class BluettiDevice:
@@ -10,6 +11,7 @@ class BluettiDevice:
         self.address = address
         self.type = type
         self.sn = sn
+        self.write_only_fields: List[WriteOnlyField] = []
 
     def parse(self, address: int, data: bytes) -> dict:
         return self.struct.parse(address, data)
@@ -49,13 +51,21 @@ class BluettiDevice:
         return []
 
     def has_field(self, field: str):
-        return any(f.name == field for f in self.struct.fields)
+        return any(f.name == field for f in self.struct.fields) or any(
+            f.name == field for f in self.write_only_fields
+        )
 
     def has_field_setter(self, field: str):
+        if any(f.name == field for f in self.write_only_fields):
+            return True
         matches = [f for f in self.struct.fields if f.name == field]
         return any(any(f.address in r for r in self.writable_ranges) for f in matches)
 
     def build_setter_command(self, field: str, value: Any):
+        write_only_field = next((f for f in self.write_only_fields if f.name == field), None)
+        if write_only_field is not None:
+            return write_only_field.build_command(value)
+
         matches = [f for f in self.struct.fields if f.name == field]
         device_field = next(f for f in matches if any(f.address in r for r in self.writable_ranges))
 
@@ -66,3 +76,11 @@ class BluettiDevice:
             value = 1 if value else 0
 
         return WriteSingleRegister(device_field.address, value)
+
+    def get_command_policy(self, field: str) -> ExecutionPolicy:
+        write_only_field = next((f for f in self.write_only_fields if f.name == field), None)
+        if write_only_field is not None:
+            return write_only_field.policy
+        if self.has_field_setter(field):
+            return ExecutionPolicy()
+        raise ValueError(f'unsupported setter field: {field}')

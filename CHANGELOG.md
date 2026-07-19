@@ -2,6 +2,10 @@
 
 ## FUTURE
 
+* Add experimental, opt-in AC300 grid charging current control with strict acknowledgement, validation, rate limiting,
+  MQTT command results, and Home Assistant discovery
+* Add strict versioned YAML runtime configuration while preserving CLI-only startup
+* Add deterministic pytest coverage with fake MQTT, BLE, environment, and clock boundaries
 * Require Python 3.10 or newer and update the supported dependency stack
 * Replace the renamed `asyncio-mqtt` package with `aiomqtt`
 

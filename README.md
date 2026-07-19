@@ -21,7 +21,8 @@ source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 python -m pip install -e .
-python -m pip install flake8 build
+python -m pip install -r requirements-dev.txt
+python -m pytest
 ```
 
 ## Usage
@@ -54,6 +55,108 @@ not set an interval.
 ```bash
 bluetti-mqtt --broker [MQTT_BROKER_HOST] 00:11:22:33:44:55 00:11:22:33:44:66
 ```
+
+### YAML configuration
+
+The existing command-line mode remains supported. Alternatively, pass one
+explicit, versioned YAML file; `--config` cannot be combined with broker,
+polling, Home Assistant, scanning, or device arguments.
+
+```bash
+bluetti-mqtt --config /etc/bluetti-mqtt.yaml
+```
+
+```yaml
+version: 1
+mqtt:
+  host: broker.example
+  port: 1883
+  username: bluetti
+  password_env: BLUETTI_MQTT_PASSWORD
+polling_interval: 10
+home_assistant: normal
+devices:
+  - model: AC300
+    address: AA:BB:CC:DD:EE:FF
+    grid_charging:
+      enabled: true
+      minimum_update_interval: 10
+```
+
+See [`examples/config.yaml`](examples/config.yaml) for a complete template.
+The schema rejects unknown keys and wrong types. Every device needs an exact
+supported model and a unique address. MQTT `password` and `password_env` are
+mutually exclusive; a missing referenced environment variable stops startup.
+Files are loaded only at startup and are not discovered or hot-reloaded.
+
+### MQTT command results
+
+Every syntactically valid public command produces a non-retained QoS 1 JSON
+result at `bluetti/result/<device>/<field>`. Command subscriptions also use
+QoS 1. Examples:
+
+```json
+{"status":"applied","cached":false,"value":5}
+{"status":"rejected","cached":false,"value":11,"error":"out_of_range"}
+{"status":"failed","cached":false,"value":5,"error":"device_timeout"}
+```
+
+`rejected` means no device write was attempted, `failed` means an attempt was
+not confirmed, and `applied` means the device returned a valid MODBUS
+acknowledgement. It does not prove measured physical behaviour. Stable errors
+are `invalid_payload`, `out_of_range`, `retained_command_not_allowed`,
+`rate_limited`, `unknown_device`, `unsupported_field`, `device_unavailable`,
+`device_timeout`, `invalid_response`, `modbus_error`, `transport_error`, and
+`internal_error`. The `value` key is omitted when payload syntax cannot be
+parsed. Malformed topics that cannot identify a result topic are logged and
+ignored.
+
+### Experimental AC300 grid charging current limit
+
+YAML can opt one AC300 into the `grid_charging_current_limit` actuator. It
+accepts only ASCII integers from 1 through 10 A and writes register 3019. The
+acknowledged, non-retained state at
+`bluetti/state/<device>/grid_charging_current_limit` remains unknown until the
+first successful write in the current process; it is never inferred from
+polling or treated as measured current. Home Assistant receives a number entity
+with minimum 1, maximum 10, step 1, and unit A.
+
+Retained commands are rejected. Duplicate values inside the configured update
+interval reuse the previous result with `cached: true`; different values are
+rejected as `rate_limited`. The interval defaults to 10 seconds and cannot be
+lowered. Device response timeout is five seconds and this actuator is never
+automatically retried. A queued setpoint expires after five seconds and is
+discarded if the BLE connection generation changes, so it cannot execute after
+a later reconnect.
+
+Use one authoritative external writer. To start safely, set the current limit,
+wait for `applied`, then send `grid_charge_on=ON`. Stop charging with the
+separate `grid_charge_on=OFF` command. The adapter intentionally provides no PV
+controller, watchdog, delayed setpoint, or automatic reset; if the external
+controller stops, the device retains its last accepted settings.
+
+This feature remains experimental until a controlled AC300 test confirms 1, 5,
+and 10 A with IoT v9014.12, ARM v4037.07, and DSP v4036.30. Automated tests do
+not access a broker, BLE adapter, or power station.
+
+Manual validation requires explicit authorization and a known-safe AC300 setup
+with charging initially disabled, a suitable supply and battery state, and an
+operator able to stop charging locally. For each value 1, 5, and 10 A:
+
+1. Publish the non-retained current-limit command and record timestamp, result,
+   and raw debug log reference.
+2. Require `applied`, then confirm the app shows the requested persistent limit
+   after reconnect.
+3. Enable `grid_charge_on`, verify observed charging behaviour stays within the
+   selected limit, then immediately disable `grid_charge_on` again.
+4. Record expected and actual result, app value, measured behaviour, firmware,
+   and any anomaly. Stop on the first mismatch; do not continue to a higher
+   current.
+
+Rollback is `grid_charge_on=OFF`, followed by restoring the operator's previous
+current limit only after another acknowledged command. Disconnect external AC
+input or use the device's local controls if MQTT/BLE shutdown does not confirm.
+No step in this checklist has been performed by the automated test suite.
 
 ## Background Service
 
@@ -92,6 +195,8 @@ This can be controlled with the `--ha-config` flag, which defaults to
 configuring most fields ("normal"). Home Assistant MQTT discovery can also be
 disabled, or additional internal device fields can be configured with the
 "advanced" option.
+
+In YAML mode, use `home_assistant: normal`, `none`, or `advanced` instead.
 
 ## Reverse Engineering
 

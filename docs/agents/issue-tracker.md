@@ -3,6 +3,10 @@
 Issues and specifications for this repository live as GitHub Issues. Use the
 `gh` CLI for all operations and infer the repository from `git remote -v`.
 
+See `docs/agents/github-runbook.md` for compact, tested commands covering
+authentication, labels, specifications, implementation-plan comments, Work
+Packages, native Sub-Issues, verification, and recovery.
+
 ## Conventions
 
 - Create an issue with `gh issue create`.

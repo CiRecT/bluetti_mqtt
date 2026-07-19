@@ -197,3 +197,9 @@ The repository uses the canonical engineering-skill labels. See
 
 The repository uses a single-context domain layout. See
 `docs/agents/domain.md`.
+
+### Feature and bugfix workflow
+
+Use `docs/agents/feature-workflow.md` to turn feature requests and bug reports
+into context, decisions, specifications, implementation plans, Work Packages,
+verified changes, and release evidence.

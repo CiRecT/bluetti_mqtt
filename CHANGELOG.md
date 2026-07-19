@@ -6,6 +6,7 @@
   MQTT command results, and Home Assistant discovery
 * Add strict versioned YAML runtime configuration while preserving CLI-only startup
 * Add deterministic pytest coverage with fake MQTT, BLE, environment, and clock boundaries
+* Add an AC300 hardware validation guide and guarded MQTT test scripts
 * Require Python 3.10 or newer and update the supported dependency stack
 * Replace the renamed `asyncio-mqtt` package with `aiomqtt`
 

@@ -157,6 +157,8 @@ Rollback is `grid_charge_on=OFF`, followed by restoring the operator's previous
 current limit only after another acknowledged command. Disconnect external AC
 input or use the device's local controls if MQTT/BLE shutdown does not confirm.
 No step in this checklist has been performed by the automated test suite.
+The complete Raspberry Pi procedure and MQTT helper scripts are documented in
+[`docs/ac300-grid-current-hardware-test.md`](docs/ac300-grid-current-hardware-test.md).
 
 ## Background Service
 

@@ -135,9 +135,13 @@ separate `grid_charge_on=OFF` command. The adapter intentionally provides no PV
 controller, watchdog, delayed setpoint, or automatic reset; if the external
 controller stops, the device retains its last accepted settings.
 
-This feature remains experimental until a controlled AC300 test confirms 1, 5,
-and 10 A with IoT v9014.12, ARM v4037.07, and DSP v4036.30. Automated tests do
-not access a broker, BLE adapter, or power station.
+The controlled AC300 test at 1, 5, and 10 A was completed successfully on
+2026-07-20. The result is based on the operator's confirmation; raw MQTT logs
+and measurements were not retained. See the
+[hardware validation report](docs/ac300-grid-current-hardware-validation.md)
+for the exact evidence boundary. The feature remains experimental because it
+has been validated on only one AC300 setup. Automated tests do not access a
+broker, BLE adapter, or power station.
 
 Manual validation requires explicit authorization and a known-safe AC300 setup
 with charging initially disabled, a suitable supply and battery state, and an
@@ -156,7 +160,7 @@ operator able to stop charging locally. For each value 1, 5, and 10 A:
 Rollback is `grid_charge_on=OFF`, followed by restoring the operator's previous
 current limit only after another acknowledged command. Disconnect external AC
 input or use the device's local controls if MQTT/BLE shutdown does not confirm.
-No step in this checklist has been performed by the automated test suite.
+No step in this checklist is performed by the automated test suite.
 The complete Raspberry Pi procedure and MQTT helper scripts are documented in
 [`docs/ac300-grid-current-hardware-test.md`](docs/ac300-grid-current-hardware-test.md).
 

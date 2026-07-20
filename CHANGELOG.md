@@ -7,6 +7,7 @@
 * Add strict versioned YAML runtime configuration while preserving CLI-only startup
 * Add deterministic pytest coverage with fake MQTT, BLE, environment, and clock boundaries
 * Add an AC300 hardware validation guide and guarded MQTT test scripts
+* Record successful operator validation of AC300 current limits at 1, 5, and 10 A
 * Include setuptools and wheel for reproducible non-isolated development builds
 * Create the CLI event loop explicitly for Python 3.14 compatibility
 * Reuse BLE advertised device names when the standard GATT name characteristic is unavailable
